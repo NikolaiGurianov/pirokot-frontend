@@ -7,6 +7,7 @@ import { SiteHeader } from '@/components/site-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
 import { apiUrl, demoProducts, type Category, type Media, type ProductPage, withDevelopmentPreviews } from '@/lib/catalog';
 
@@ -31,9 +32,18 @@ function ProductPreview({ productId, media, name }: { productId: number; media?:
 
 export function CatalogView() {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [filterOptions, setFilterOptions] = useState<{ minPriceMinor: number; maxPriceMinor: number; brands: string[]; shots: number[]; calibers: string[] } | null>(null);
   const [catalog, setCatalog] = useState<ProductPage>(demoProducts);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [inStock, setInStock] = useState(false);
+  const [search, setSearch] = useState('');
+  const [brand, setBrand] = useState('');
+  const [minPriceMinor, setMinPriceMinor] = useState('');
+  const [maxPriceMinor, setMaxPriceMinor] = useState('');
+  const [shots, setShots] = useState('');
+  const [caliber, setCaliber] = useState('');
+  const [sort, setSort] = useState('name');
+  const [direction, setDirection] = useState('ASC');
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -46,15 +56,30 @@ export function CatalogView() {
   }, []);
 
   useEffect(() => {
+    fetch(`${apiUrl}/api/catalog/products/filter-options`)
+      .then(response => response.ok ? response.json() : Promise.reject())
+      .then(data => setFilterOptions(data as { minPriceMinor: number; maxPriceMinor: number; brands: string[]; shots: number[]; calibers: string[] }))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     const parameters = new URLSearchParams({ page: String(page), size: '12', sort: 'name' });
     if (categoryId !== null) parameters.set('categoryId', String(categoryId));
     if (inStock) parameters.set('inStock', 'true');
+    if (search.trim()) parameters.set('query', search.trim());
+    if (brand.trim()) parameters.set('brand', brand.trim());
+    if (minPriceMinor) parameters.set('minPriceMinor', String(Math.round(Number(minPriceMinor) * 100)));
+    if (maxPriceMinor) parameters.set('maxPriceMinor', String(Math.round(Number(maxPriceMinor) * 100)));
+    if (shots) parameters.set('shots', shots);
+    if (caliber.trim()) parameters.set('caliber', caliber.trim());
+    parameters.set('sort', sort);
+    parameters.set('direction', direction);
     fetch(`${apiUrl}/api/catalog/products?${parameters}`)
       .then(response => response.ok ? response.json() as Promise<ProductPage> : Promise.reject())
       .then(data => { setCatalog(withDevelopmentPreviews(data)); setOffline(false); })
       .catch(() => { setCatalog(demoProducts); setOffline(true); })
       .finally(() => setLoading(false));
-  }, [categoryId, inStock, page]);
+  }, [categoryId, inStock, page, search, brand, minPriceMinor, maxPriceMinor, shots, caliber, sort, direction]);
 
   const selectedCategory = useMemo(
     () => categories.find(category => category.id === categoryId), [categories, categoryId],
@@ -72,12 +97,33 @@ export function CatalogView() {
         </section>
 
         <div className="catalog-toolbar">
+          <select value={sort} onChange={event => { setSort(event.target.value); setPage(0); }} aria-label="Сортировка">
+            <option value="name">По названию</option><option value="priceMinor">По цене</option><option value="stockQuantity">По остатку</option><option value="createdAt">По новизне</option>
+          </select>
+          <select value={direction} onChange={event => { setDirection(event.target.value); setPage(0); }} aria-label="Направление сортировки">
+            <option value="ASC">По возрастанию</option><option value="DESC">По убыванию</option>
+          </select>
           <div className="category-pills" aria-label="Категории">
             <Button variant={categoryId === null ? 'default' : 'outline'} onClick={() => selectCategory(null)}>Все</Button>
             {categories.map(category => <Button key={category.id} variant={categoryId === category.id ? 'default' : 'outline'} onClick={() => selectCategory(category.id)}>{category.name}</Button>)}
           </div>
           <label className="stock-filter" htmlFor="in-stock"><Checkbox id="in-stock" checked={inStock} onCheckedChange={value => { setLoading(true); setInStock(value === true); setPage(0); }} />Только в наличии</label>
         </div>
+        <form className="catalog-toolbar" onSubmit={event => { event.preventDefault(); setLoading(true); setPage(0); }}>
+          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Поиск по каталогу" aria-label="Поиск по каталогу" />
+          <select value={brand} onChange={event => { setBrand(event.target.value); setPage(0); }} aria-label="Бренд"><option value="">Все бренды</option>{filterOptions?.brands.map(value => <option key={value} value={value}>{value}</option>)}</select>
+          <label>Цена от, ₽
+            <input type="range" min={filterOptions ? Math.floor(filterOptions.minPriceMinor / 100) : 0} max={filterOptions ? Math.floor(filterOptions.maxPriceMinor / 100) : 0} value={minPriceMinor || (filterOptions ? Math.floor(filterOptions.minPriceMinor / 100) : 0)} onChange={event => { setMinPriceMinor(event.target.value); setPage(0); }} />
+            <Input type="number" min={filterOptions ? Math.floor(filterOptions.minPriceMinor / 100) : 0} max={filterOptions ? Math.floor(filterOptions.maxPriceMinor / 100) : undefined} value={minPriceMinor || (filterOptions ? Math.floor(filterOptions.minPriceMinor / 100) : '')} onChange={event => { setMinPriceMinor(event.target.value); setPage(0); }} aria-label="Минимальная цена в рублях" />
+          </label>
+          <label>Цена до, ₽
+            <input type="range" min={filterOptions ? Math.floor(filterOptions.minPriceMinor / 100) : 0} max={filterOptions ? Math.floor(filterOptions.maxPriceMinor / 100) : 0} value={maxPriceMinor || (filterOptions ? Math.floor(filterOptions.maxPriceMinor / 100) : 0)} onChange={event => { setMaxPriceMinor(event.target.value); setPage(0); }} />
+            <Input type="number" min={filterOptions ? Math.floor(filterOptions.minPriceMinor / 100) : 0} max={filterOptions ? Math.floor(filterOptions.maxPriceMinor / 100) : undefined} value={maxPriceMinor || (filterOptions ? Math.floor(filterOptions.maxPriceMinor / 100) : '')} onChange={event => { setMaxPriceMinor(event.target.value); setPage(0); }} aria-label="Максимальная цена в рублях" />
+          </label>
+          <select value={shots} onChange={event => { setShots(event.target.value); setPage(0); }} aria-label="Количество залпов"><option value="">Любое число залпов</option>{filterOptions?.shots.map(value => <option key={value} value={value}>{value}</option>)}</select>
+          <select value={caliber} onChange={event => { setCaliber(event.target.value); setPage(0); }} aria-label="Калибр"><option value="">Любой калибр</option>{filterOptions?.calibers.map(value => <option key={value} value={value}>{value}</option>)}</select>
+          <Button type="submit">Применить</Button>
+        </form>
 
         {offline && <output className="notice">Backend выключен — показаны демонстрационные товары</output>}
         {catalog.content.length ? (

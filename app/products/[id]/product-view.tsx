@@ -19,16 +19,11 @@ function safeVideo(value: string) {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:') return null;
-    if (url.hostname === 'youtu.be') return `https://www.youtube.com/embed/${url.pathname.slice(1)}`;
-    if (['youtube.com', 'www.youtube.com'].includes(url.hostname) && url.pathname === '/watch') {
-      const id = url.searchParams.get('v');
-      return id ? `https://www.youtube.com/embed/${id}` : null;
-    }
     if (['rutube.ru', 'www.rutube.ru'].includes(url.hostname)) {
       const match = url.pathname.match(/^\/(?:video|play\/embed)\/([a-zA-Z0-9]+)\/?$/);
       return match ? `https://rutube.ru/play/embed/${match[1]}` : null;
     }
-    return url.hostname === 'player.vimeo.com' ? url.href : null;
+    return null;
   } catch { return null; }
 }
 
@@ -128,10 +123,21 @@ export function ProductView({ productId }: { productId: number }) {
   }, [expandedImageId, navigateExpandedImage]);
 
   async function addToCart() {
-    const response = await fetch(`${apiUrl}/api/catalog/products/${product.id}/availability-check?quantity=${quantity}`);
-    if (!response.ok) { setNotice('Не удалось проверить остаток. Попробуйте ещё раз.'); return; }
-    const availability = await response.json() as { available: boolean };
-    setNotice(availability.available ? `${quantity} шт. добавлено в корзину` : 'Такого количества сейчас нет в наличии');
+    const token = window.localStorage.getItem('pirokot-cart-token');
+    const response = await fetch(`${apiUrl}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(token ? { 'X-Cart-Token': token } : {}),
+      },
+      body: JSON.stringify({ productId: product.id, quantity }),
+    });
+    if (!response.ok) { setNotice('Не удалось добавить товар в корзину. Попробуйте ещё раз.'); return; }
+    const nextToken = response.headers.get('X-Cart-Token');
+    if (nextToken) window.localStorage.setItem('pirokot-cart-token', nextToken);
+    const item = await response.json() as { quantity: number };
+    setNotice(`В корзине ${item.quantity} шт.`);
   }
 
   if (missing) return <main className="min-h-screen"><SiteHeader /><section className="product-missing"><p className="section-kicker">Ошибка 404</p><h1>Товар не найден</h1><p>Возможно, он снят с публикации или адрес указан неверно.</p><Button render={<Link href="/products" />}>Вернуться в каталог</Button></section></main>;

@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Minus, Plus, ShoppingBag, Sparkles, Video } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Expand, Minus, Play, Plus, ShoppingBag, Sparkles, Video } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
-import { apiUrl, demoProduct, type Media, type Product } from '@/lib/catalog';
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, type CarouselApi } from '@/components/ui/carousel';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { apiUrl, demoProduct, type Media, type Product, withDevelopmentMedia } from '@/lib/catalog';
 
 const money = (minor: number, currency: string) => new Intl.NumberFormat('ru-RU', {
   style: 'currency', currency, maximumFractionDigits: 0,
@@ -23,18 +24,42 @@ function safeVideo(value: string) {
       const id = url.searchParams.get('v');
       return id ? `https://www.youtube.com/embed/${id}` : null;
     }
-    return ['player.vimeo.com', 'rutube.ru'].includes(url.hostname) ? url.href : null;
+    if (['rutube.ru', 'www.rutube.ru'].includes(url.hostname)) {
+      const match = url.pathname.match(/^\/(?:video|play\/embed)\/([a-zA-Z0-9]+)\/?$/);
+      return match ? `https://rutube.ru/play/embed/${match[1]}` : null;
+    }
+    return url.hostname === 'player.vimeo.com' ? url.href : null;
   } catch { return null; }
+}
+
+function safeExternalVideo(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.href : null;
+  } catch { return null; }
+}
+
+function mediaUrl(value: string) {
+  return value.startsWith('/') && !value.startsWith('/api/') ? value : `${apiUrl}${value}`;
 }
 
 function MediaFrame({ media, name }: { media?: Media; name: string }) {
   if (!media) return <div className="media-placeholder"><Sparkles /><span>Фотография скоро появится</span></div>;
   // Backend media endpoint уже задаёт ETag/Cache-Control; URL может указывать на локальный origin.
   // oxlint-disable-next-line next/no-img-element
-  if (media.kind === 'IMAGE') return <img src={`${apiUrl}${media.url}`} alt={media.altText || name} loading="lazy" />;
+  if (media.kind === 'IMAGE') return <img src={mediaUrl(media.url)} alt={media.altText || name} loading="lazy" />;
   const source = safeVideo(media.url);
-  return source ? <iframe src={source} title={`Видео: ${name}`} allow="encrypted-media; picture-in-picture" allowFullScreen />
-    : <div className="media-placeholder"><Video /><span>Видео временно недоступно</span></div>;
+  const externalUrl = safeExternalVideo(media.url);
+  return source ? <div className="video-frame">
+    <iframe src={source} title={`Видео: ${name}`} allow="clipboard-write; autoplay; encrypted-media; picture-in-picture" allowFullScreen />
+    {externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer">Открыть видео на сайте источника</a>}
+  </div> : <div className="media-placeholder"><Video /><span>Видео временно недоступно</span>{externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer">Открыть на сайте источника</a>}</div>;
+}
+
+function MediaPreview({ media, name }: { media: Media; name: string }) {
+  if (media.kind === 'VIDEO') return <span className="video-preview"><Play aria-hidden="true" />Видео</span>;
+  // oxlint-disable-next-line next/no-img-element
+  return <img src={mediaUrl(media.url)} alt={media.altText || `Превью: ${name}`} loading="lazy" />;
 }
 
 export function ProductView({ productId }: { productId: number }) {
@@ -42,20 +67,65 @@ export function ProductView({ productId }: { productId: number }) {
   const [product, setProduct] = useState<Product>(demoProduct);
   const [loading, setLoading] = useState(validProductId);
   const [notice, setNotice] = useState(validProductId ? '' : 'Некорректный идентификатор товара');
+  const [missing, setMissing] = useState(!validProductId);
   const [quantity, setQuantity] = useState(1);
+  const [carouselApi, setCarouselApi] = useState<CarouselApi>();
+  const [selectedMedia, setSelectedMedia] = useState(0);
+  const [expandedImageId, setExpandedImageId] = useState<number | null>(null);
+  const expandedGalleryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!validProductId) return;
     fetch(`${apiUrl}/api/catalog/products/${productId}`, { headers: { Accept: 'application/json' } })
-      .then(response => response.ok ? response.json() as Promise<Product> : Promise.reject(new Error('Товар не найден')))
-      .then(setProduct)
+      .then(response => {
+        if (response.status === 404) { setMissing(true); return null; }
+        return response.ok ? response.json() as Promise<Product> : Promise.reject(new Error('Backend недоступен'));
+      })
+      .then(value => {
+        if (!value) return;
+        const productWithMedia = withDevelopmentMedia(value);
+        setProduct(productWithMedia);
+        if (productWithMedia !== value) setNotice('Для проверки галереи добавлены демонстрационные изображения');
+      })
       .catch(() => setNotice('Backend недоступен — показана демонстрационная карточка'))
       .finally(() => setLoading(false));
   }, [productId, validProductId]);
 
   const gallery = useMemo(() => product.media.length ? product.media : [undefined], [product.media]);
+  const images = useMemo(() => product.media.filter(media => media.kind === 'IMAGE'), [product.media]);
+  const expandedImage = images.find(image => image.id === expandedImageId) ?? null;
   const maxQuantity = Math.max(product.stockQuantity, 1);
   const changeQuantity = (next: number) => setQuantity(Math.min(maxQuantity, Math.max(1, next)));
+
+  useEffect(() => {
+    if (!carouselApi) return;
+    const updateSelection = () => setSelectedMedia(carouselApi.selectedScrollSnap());
+    updateSelection();
+    carouselApi.on('select', updateSelection);
+    return () => { carouselApi.off('select', updateSelection); };
+  }, [carouselApi]);
+
+  function selectMedia(index: number) {
+    setSelectedMedia(index);
+    carouselApi?.scrollTo(index);
+  }
+
+  const navigateExpandedImage = useCallback((direction: -1 | 1) => {
+    if (!expandedImage || images.length < 2) return;
+    const currentIndex = images.findIndex(image => image.id === expandedImage.id);
+    const nextIndex = (currentIndex + direction + images.length) % images.length;
+    setExpandedImageId(images[nextIndex].id);
+  }, [expandedImage, images]);
+
+  useEffect(() => {
+    if (expandedImageId === null) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowLeft') { event.preventDefault(); navigateExpandedImage(-1); }
+      if (event.key === 'ArrowRight') { event.preventDefault(); navigateExpandedImage(1); }
+    };
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, [expandedImageId, navigateExpandedImage]);
 
   async function addToCart() {
     const response = await fetch(`${apiUrl}/api/catalog/products/${product.id}/availability-check?quantity=${quantity}`);
@@ -63,6 +133,8 @@ export function ProductView({ productId }: { productId: number }) {
     const availability = await response.json() as { available: boolean };
     setNotice(availability.available ? `${quantity} шт. добавлено в корзину` : 'Такого количества сейчас нет в наличии');
   }
+
+  if (missing) return <main className="min-h-screen"><SiteHeader /><section className="product-missing"><p className="section-kicker">Ошибка 404</p><h1>Товар не найден</h1><p>Возможно, он снят с публикации или адрес указан неверно.</p><Button render={<Link href="/products" />}>Вернуться в каталог</Button></section></main>;
 
   return (
     <main className="min-h-screen">
@@ -73,10 +145,15 @@ export function ProductView({ productId }: { productId: number }) {
         </nav>
         {notice && <output className="notice">{notice}</output>}
         <section className="product-layout" aria-busy={loading}>
-          <Carousel className="gallery" opts={{ loop: gallery.length > 1 }}>
-            <CarouselContent>{gallery.map((media, index) => <CarouselItem key={media?.id ?? index}><div className="media-frame"><MediaFrame media={media} name={product.name} /></div></CarouselItem>)}</CarouselContent>
+          <div className="gallery-stack">
+          <Carousel className="gallery" opts={{ loop: gallery.length > 1 }} setApi={setCarouselApi} aria-label={`Медиа товара ${product.name}`}>
+            <CarouselContent>{gallery.map((media, index) => <CarouselItem key={media?.id ?? index}><div className="media-frame">{media?.kind === 'IMAGE' ? <button className="expand-image" type="button" onClick={() => setExpandedImageId(media.id)} aria-label={`Увеличить изображение ${index + 1}`}><MediaFrame media={media} name={product.name} /><span><Expand aria-hidden="true" />Увеличить</span></button> : <MediaFrame media={media} name={product.name} />}</div></CarouselItem>)}</CarouselContent>
             {gallery.length > 1 && <><CarouselPrevious aria-label="Предыдущее медиа" /><CarouselNext aria-label="Следующее медиа" /></>}
           </Carousel>
+          {product.media.length > 1 && <div className="media-previews" aria-label="Выбор изображения или видео">
+            {product.media.map((media, index) => <button type="button" key={media.id} className={selectedMedia === index ? 'is-selected' : ''} onClick={() => selectMedia(index)} aria-label={media.kind === 'VIDEO' ? `Открыть видео ${index + 1}` : `Открыть изображение ${index + 1}`} aria-current={selectedMedia === index ? 'true' : undefined}><MediaPreview media={media} name={product.name} /></button>)}
+          </div>}
+          </div>
           <div className="product-summary">
             <div className="badge-row">{product.badges.map(label => <Badge key={label} variant="outline">{label}</Badge>)}</div>
             <p className="eyebrow">{product.brand || 'Пирокот'} · {product.sku}</p>
@@ -97,6 +174,20 @@ export function ProductView({ productId }: { productId: number }) {
         <section className="details-grid"><div><p className="section-kicker">В деталях</p><h2>Характеристики</h2></div><dl>{product.attributes.map(item => <div key={item.key}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></section>
         {!!product.relatedProducts.length && <section className="related"><p className="section-kicker">Ещё немного огня</p><h2>Похожие товары</h2><div className="related-grid">{product.relatedProducts.map(item => <Link href={`/products/${item.id}`} key={item.id}><small>{item.brand || 'Пирокот'}</small><h3>{item.name}</h3><strong>{money(item.priceMinor, item.currency)}</strong></Link>)}</div></section>}
       </div>
+      <Dialog open={expandedImage !== null} onOpenChange={open => { if (!open) setExpandedImageId(null); }}>
+        <DialogContent className="image-dialog" initialFocus={expandedGalleryRef}>
+          <DialogTitle>{product.name}</DialogTitle>
+          <DialogDescription>Увеличенное изображение товара</DialogDescription>
+          {expandedImage && <div className="expanded-gallery" ref={expandedGalleryRef} tabIndex={-1}>
+            <MediaFrame media={expandedImage} name={product.name} />
+            {images.length > 1 && <>
+              <Button className="expanded-previous" variant="outline" size="icon" onClick={() => navigateExpandedImage(-1)} aria-label="Предыдущее изображение"><ChevronLeft /></Button>
+              <Button className="expanded-next" variant="outline" size="icon" onClick={() => navigateExpandedImage(1)} aria-label="Следующее изображение"><ChevronRight /></Button>
+              <span className="expanded-counter" aria-live="polite">{images.findIndex(image => image.id === expandedImage.id) + 1} / {images.length}</span>
+            </>}
+          </div>}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

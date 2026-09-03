@@ -7,11 +7,27 @@ import { SiteHeader } from '@/components/site-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { apiUrl, demoProducts, type Category, type ProductPage } from '@/lib/catalog';
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
+import { apiUrl, demoProducts, type Category, type Media, type ProductPage, withDevelopmentPreviews } from '@/lib/catalog';
 
 const money = (minor: number, currency: string) => new Intl.NumberFormat('ru-RU', {
   style: 'currency', currency, maximumFractionDigits: 0,
 }).format(minor / 100);
+
+const imageUrl = (media: Media) => media.url.startsWith('/api/') ? `${apiUrl}${media.url}` : media.url;
+
+function ProductPreview({ productId, media, name }: { productId: number; media?: Media[]; name: string }) {
+  const images = media?.filter(item => item.kind === 'IMAGE') ?? [];
+  if (!images.length) return <div className="product-card-art"><Sparkles aria-hidden="true" /><span>Пиротехника</span></div>;
+  return <Carousel className="product-card-gallery" opts={{ loop: images.length > 1 }} aria-label={`Фотографии товара ${name}`}>
+    <CarouselContent>{images.map(image => <CarouselItem key={image.id}><Link href={`/products/${productId}`} className="product-card-art" aria-label={`Открыть товар ${name}`}>
+      {/* Backend already supplies cache headers for its image endpoint. */}
+      {/* oxlint-disable-next-line next/no-img-element */}
+      <img src={imageUrl(image)} alt={image.altText || name} loading="lazy" />
+    </Link></CarouselItem>)}</CarouselContent>
+    {images.length > 1 && <><CarouselPrevious aria-label="Предыдущее фото" /><CarouselNext aria-label="Следующее фото" /></>}
+  </Carousel>;
+}
 
 export function CatalogView() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -35,7 +51,7 @@ export function CatalogView() {
     if (inStock) parameters.set('inStock', 'true');
     fetch(`${apiUrl}/api/catalog/products?${parameters}`)
       .then(response => response.ok ? response.json() as Promise<ProductPage> : Promise.reject())
-      .then(data => { setCatalog(data as ProductPage); setOffline(false); })
+      .then(data => { setCatalog(withDevelopmentPreviews(data)); setOffline(false); })
       .catch(() => { setCatalog(demoProducts); setOffline(true); })
       .finally(() => setLoading(false));
   }, [categoryId, inStock, page]);
@@ -67,14 +83,14 @@ export function CatalogView() {
         {catalog.content.length ? (
           <section className="product-grid" aria-busy={loading} aria-label="Товары">
             {catalog.content.map(product => (
-              <Link className="product-card" href={`/products/${product.id}`} key={product.id}>
-                <div className="product-card-art"><Sparkles aria-hidden="true" /><span>{product.category?.name ?? 'Пиротехника'}</span></div>
-                <div className="product-card-copy">
+              <article className="product-card" key={product.id}>
+                <ProductPreview productId={product.id} media={product.media} name={product.name} />
+                <Link className="product-card-copy" href={`/products/${product.id}`}>
                   <div className="product-card-meta"><span>{product.brand || 'Пирокот'}</span>{product.stockQuantity > 0 && <Badge variant="outline">В наличии</Badge>}</div>
                   <h2>{product.name}</h2>
                   <div className="product-card-price"><strong>{money(product.priceMinor, product.currency)}</strong>{product.oldPriceMinor && <del>{money(product.oldPriceMinor, product.currency)}</del>}</div>
-                </div>
-              </Link>
+                </Link>
+              </article>
             ))}
           </section>
         ) : <div className="catalog-empty"><PackageOpen /><h2>В этой категории пока пусто</h2><p>Попробуйте снять фильтр наличия или выбрать другой раздел.</p></div>}

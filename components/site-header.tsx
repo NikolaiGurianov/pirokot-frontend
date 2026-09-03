@@ -10,7 +10,7 @@ export function SiteHeader() {
         <Link href="/products">Каталог</Link>
         <span aria-disabled="true">Доставка</span>
       </nav>
-      <Button variant="outline" className="cart-button" disabled title="Корзина появится в следующем разделе">
+      <Button variant="outline" className="cart-button" render={<Link href="/cart" />}>
         <ShoppingBag /> Корзина
       </Button>
     </header>

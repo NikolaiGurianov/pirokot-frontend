@@ -8,7 +8,6 @@ export function SiteHeader() {
       <Link className="brand" href="/products"><Flame aria-hidden="true" />Пирокот</Link>
       <nav className="main-nav" aria-label="Основная навигация">
         <Link href="/products">Каталог</Link>
-        <span aria-disabled="true">Доставка</span>
       </nav>
       <div className="header-actions">
         <Button variant="ghost" className="account-button" render={<Link href="/account" />}>

@@ -1,6 +1,15 @@
 import Link from 'next/link';
-import { ArrowRight, FileCheck2, FileWarning, ShieldCheck } from 'lucide-react';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Информация — Пирокот',
+  description: 'Информация об использовании пиротехники, сертификатах и региональных уведомлениях.',
+  openGraph: { title: 'Информация — Пирокот', description: 'Информация об использовании пиротехники, сертификатах и региональных уведомлениях.' },
+  twitter: { title: 'Информация — Пирокот', description: 'Информация об использовании пиротехники, сертификатах и региональных уведомлениях.' },
+};
+import { ArrowRight, FileCheck2, FileWarning } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
+import { InstructionViewer } from '@/components/instruction-viewer';
 
 export default function InformationPage() {
   return (
@@ -15,7 +24,7 @@ export default function InformationPage() {
 
         <section className="information-grid" aria-label="Разделы информации">
           <article className="information-card information-card--instruction">
-            <ShieldCheck aria-hidden="true" />
+            <InstructionViewer />
             <p className="information-label">Инструкция</p>
             <h2>Используйте пиротехнику безопасно</h2>
             <ul>
@@ -45,8 +54,8 @@ export default function InformationPage() {
             <h2>Региональные уведомления</h2>
             <p>Здесь будут появляться только проверенные сообщения о противопожарных режимах с датой, сроком действия и ссылкой на официальный источник.</p>
             <output className="information-empty">
-              <span>Актуальных уведомлений нет</span>
-              <small>Мы не публикуем правовые сведения без первичного официального документа.</small>
+              <span>Уведомления пока не опубликованы</span>
+              <small>Отсутствие публикаций на сайте не означает отсутствие действующих ограничений. Перед запуском уточните их в официальных источниках.</small>
             </output>
           </article>
         </section>

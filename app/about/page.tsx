@@ -1,4 +1,12 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'О нас — Пирокот',
+  description: 'Магазин пиротехники Пирокот в Тюмени. Выбор товаров, самовывоз и контакты.',
+  openGraph: { title: 'О нас — Пирокот', description: 'Магазин пиротехники Пирокот в Тюмени. Выбор товаров, самовывоз и контакты.' },
+  twitter: { title: 'О нас — Пирокот', description: 'Магазин пиротехники Пирокот в Тюмени. Выбор товаров, самовывоз и контакты.' },
+};
 import { ArrowRight, MapPin, PackageCheck, ShieldCheck } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { Button } from '@/components/ui/button';

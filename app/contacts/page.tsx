@@ -1,7 +1,16 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Контакты — Пирокот',
+  description: 'Адрес, телефон и график магазина Пирокот в Тюмени. Карта и заявка на обратный звонок.',
+  openGraph: { title: 'Контакты — Пирокот', description: 'Адрес, телефон и график магазина Пирокот в Тюмени. Карта и заявка на обратный звонок.' },
+  twitter: { title: 'Контакты — Пирокот', description: 'Адрес, телефон и график магазина Пирокот в Тюмени. Карта и заявка на обратный звонок.' },
+};
 import { Clock3, ExternalLink, MapPinned, Phone } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { Button } from '@/components/ui/button';
+import { CallbackForm } from '@/components/callback-form';
 
 const mapUrl = 'https://yandex.ru/maps/org/pirokot/163064880382/?ll=65.575794%2C57.142287&z=16';
 const mapWidgetUrl = 'https://yandex.ru/map-widget/v1/?ll=65.575533%2C57.142056&z=16&pt=65.575533%2C57.142056,pm2rdm';
@@ -59,6 +68,7 @@ export default function ContactsPage() {
             </a>
           </div>
         </section>
+        <CallbackForm />
       </main>
     </>
   );
